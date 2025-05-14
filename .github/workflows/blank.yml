@@ -1,0 +1,168 @@
+name: ServerLaunch
+on: 
+    push:
+        branches: ["main"]
+ 
+concurrency: 
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+jobs:
+  tests_backend:
+    environment: CodeCov
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+    - name: CodeCheckout
+      uses: actions/checkout@v4
+    - name: InstallNodeJS
+      uses: actions/setup-node@v3
+      with:
+        cache: 'npm'
+        cache-dependency-path: server/package-lock.json
+    - name: InstallDependance
+      run: |
+        npm ci --prefer-offline
+    - name: ExcecuteTest
+      run: |
+        npm run test:ci
+    - name: VerifCode
+      run: |
+        npm run lint
+    - name: VerifierVulnerabilite
+      continue-on-error: true
+      run: |
+        npm audit
+    # Add codecov
+    - name: UploadCoverageReportCodeCov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.TOKENCODECOV }}
+        slug: hadri123soleil/P_bulle-DevOps
+  checks_frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./client
+    steps:
+    - name: CodeCheckout
+      uses: actions/checkout@v4
+    - name: InstallNodeJS
+      uses: actions/setup-node@v3
+      with:
+        cache: 'npm'
+        cache-dependency-path: client/package-lock.json
+    - name: InstallDependance
+      run: npm ci --prefer-offline
+    - name: VerifierVulnerabilite
+      continue-on-error: true
+      run: npm audit
+    - name: VerifCode
+      run: npm run lint
+  build_frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    needs: [checks_frontend]
+    steps:
+      - name: CodeCheckout
+        uses: actions/checkout@v4
+      - name: InstallNodeJS
+        uses: actions/setup-node@v3
+        with:
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+      - name: InstallDependance
+        run: |
+          npm ci --prefer-offline
+      - name: BuildFrontEnd
+        run: |
+          npm run build
+      - name: ArchiverArtefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FrontEndDist
+          path: client/dist/
+          retention-days: 1
+  test_e2e:
+    runs-on: ubuntu-latest
+    needs: [build_frontend]
+    steps:
+      - name: CodeCheckout
+        uses: actions/checkout@v4
+      - name: TelechargerArtefacteFrontEnd
+        uses: actions/download-artifact@v4
+        with:
+          name: FrontEndDist
+          path: client/dist/
+      - name: InstallNodeJS
+        uses: actions/setup-node@v3
+        with:
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+      - name: InstallDependanceServeur
+        run: |
+          cd server
+          npm ci --prefer-offline
+      - name: LancerServeurBackEnd
+        run: |
+          cd server
+          node index.js &
+      - name: CacheCypressBinary
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/Cypress
+          key: ${{ runner.os }}-cypress-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cypress-
+      # Cypress ⚠
+      - name: Cypress
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: client
+          browser: chrome
+          start: npm run preview
+          wait-on: http://localhost:4173
+          wait-on-timeout: 60
+          config: baseUrl=http://localhost:4173
+  deploy:
+      environment: LoginInfos
+      needs: [test_e2e]
+      runs-on: ubuntu-latest
+      steps: 
+        - name: CodeCheckout
+          uses: actions/checkout@v4
+ 
+        - name: InstallSshPass
+          run: sudo apt install -y sshpass
+ 
+        - name: AjouterIPServeurKnowHosts
+          run: |
+            mkdir -p ~/.ssh
+            ssh-keyscan -H ${{ secrets.SSHIP }} >> ~/.ssh/known_hosts
+ 
+        - name: CopierDossierServerOnServeur
+          run: |
+            sshpass -p "${{ secrets.MDPAZURE }}" scp -o PreferredAuthentications=password -o PubkeyAuthentication=no -r ./server ${{ secrets.SSHUSER }}@${{ secrets.SSHIP }}:/var/www
+ 
+        - name: CopierDossierClientOnServeur
+          run: |
+            sshpass -p "${{ secrets.MDPAZURE }}" scp -o PreferredAuthentications=password -o PubkeyAuthentication=no -r ./client ${{ secrets.SSHUSER }}@${{ secrets.SSHIP }}:/var/www
+ 
+        - name: InstallDependanceServeur
+          run: |
+            sshpass -p "${{ secrets.MDPAZURE }}" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no ${{ secrets.SSHUSER }}@${{ secrets.SSHIP }} "cd /var/www/server && npm install --omit=dev"
+ 
+        - name: InstallDependanceClient
+          run: |
+            sshpass -p "${{ secrets.MDPAZURE }}" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no ${{ secrets.SSHUSER }}@${{ secrets.SSHIP }} "cd /var/www/client && npm install"
+ 
+        - name: RedemarrerBackEndPM2
+          run: |
+            sshpass -p "${{ secrets.MDPAZURE }}" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no ${{ secrets.SSHUSER }}@${{ secrets.SSHIP }} "cd /var/www/server && pm2 startOrRestart ecosystem.config.js --env production && pm2 save"
+ 
+        - name: RedemarrerFrontEndPM2
+          run: |
+            sshpass -p "${{ secrets.MDPAZURE }}" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no ${{ secrets.SSHUSER }}@${{ secrets.SSHIP }} "cd /var/www/client && pm2 delete client || true && pm2 start --name 'client' yarn -- dev --host --port 5174"
