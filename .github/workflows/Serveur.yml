@@ -134,7 +134,7 @@ jobs:
         - name: AjouterIPServeurKnowHosts
           run: |
             mkdir -p ~/.ssh
-            ssh-keyscan -H ${{ secrets.SSHIP }} >> ~/.ssh/known_hosts
+            ssh-keyscan -h ${{ secrets.SSHIP }} >> ~/.ssh/known_hosts
  
         - name: CopierDossierServerOnServeur
           run: |
