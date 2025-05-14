@@ -121,7 +121,7 @@ jobs:
           wait-on-timeout: 60
           config: baseUrl=http://localhost:4173
   deploy:
-      environment: LoginInfos
+      environment: InfoLog
       needs: [test_e2e]
       runs-on: ubuntu-latest
       steps: 
