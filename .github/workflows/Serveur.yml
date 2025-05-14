@@ -34,12 +34,6 @@ jobs:
       continue-on-error: true
       run: |
         npm audit
-    # Add codecov
-    - name: UploadCoverageReportCodeCov
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.TOKENCODECOV }}
-        slug: hadri123soleil/P_bulle-DevOps
   checks_frontend:
     runs-on: ubuntu-latest
     defaults:
