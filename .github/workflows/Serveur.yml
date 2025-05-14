@@ -8,7 +8,6 @@ concurrency:
     cancel-in-progress: true
 jobs:
   tests_backend:
-    environment: CodeCov
     runs-on: ubuntu-latest
     defaults:
       run:
